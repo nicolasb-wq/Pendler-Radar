@@ -2,9 +2,11 @@
 
 Eine selbst betreibbare Web-App für gemeinschaftliche Echtzeit-Hinweise im Schienenverkehr.
 
-Pendler-Radar ist von [FreiFahren](https://freifahren.org/) aus Berlin inspiriert: Fahrgäste können Beobachtungen zu Fahrkartenkontrollen in Zügen melden und aktuelle Meldungen anderer Fahrgäste sehen. Die Anwendung soll schnell, mobil, transparent und datensparsam sein – ohne Personen zu identifizieren und ohne ein Bewegungsprofil ihrer Nutzer:innen aufzubauen.
+Pendler-Radar ist von [FreiFahren](https://freifahren.org/) aus Berlin inspiriert: Fahrgäste können aktuelle Beobachtungen an Bahnhöfen und in Zügen melden und aktuelle Meldungen anderer Fahrgäste sehen. Die erste Version beginnt bewusst mit harmlosen Meldungen wie „Aufzug defekt“, „überfüllt“ oder „Störung“. Eine Meldung zu Fahrkartenkontrollen ist ausdrücklich **nicht Teil des MVP** und wird erst nach einer eigenen rechtlichen und strategischen Prüfung betrachtet. Die Anwendung soll schnell, mobil, transparent und datensparsam sein – ohne Personen zu identifizieren und ohne ein Bewegungsprofil ihrer Nutzer:innen aufzubauen.
 
 > **Konzeptphase:** Dieses Repository enthält aktuell die Projektdokumentation. Es gibt noch keine ausführbare Anwendung, keine API, keine Datenbank und keine produktive Instanz. Die technischen Entscheidungen und Beispiele in dieser README beschreiben das Zielbild und sind an den Stellen als Vorschlag gekennzeichnet.
+>
+> **Daten zuerst:** Bevor Infrastruktur aufgebaut wird, wird geprüft, ob die benötigten Stations-, Linien- und Abfahrtsdaten vollständig, aktuell und mit zulässiger Lizenz verfügbar sind.
 >
 > Pendler-Radar ist ein unabhängiges Projekt und nicht mit FreiFahren, der BVG, der S-Bahn Berlin oder einem anderen Verkehrsunternehmen verbunden. Meldungen sind möglicherweise veraltet oder falsch. Sie ersetzen weder ein gültiges Ticket noch offizielle Informationen des Verkehrsunternehmens.
 
@@ -56,18 +58,30 @@ Pendler-Radar ist von [FreiFahren](https://freifahren.org/) aus Berlin inspirier
 
 Diese README beschreibt also kein bereits fertiges Produkt. Sie ist gleichzeitig Produktbeschreibung, technische Spezifikation und Arbeitsgrundlage für die Implementierung. Sobald Code entsteht, werden Aussagen über tatsächlich vorhandene Funktionen hier von Vorschlägen und offenen Entscheidungen getrennt.
 
+## Kurzfassung des Umsetzungsplans
+
+1. **Daten prüfen:** echte Stationen in Münster mit `db.transport.rest`, DB Timetables API und DELFI/GTFS vergleichen.
+2. **Walking Skeleton:** FastAPI-Abfahrtsendpoint und minimales Frontend bauen – zunächst ohne Redis, PostgreSQL und Karte.
+3. **Caching nachweisen:** Redis, Request-Coalescing und adaptive TTL; 100 parallele Nutzer:innen sollen höchstens einen Upstream-Request auslösen.
+4. **Harmlose Meldungen:** „Aufzug defekt“, „überfüllt“ und „Störung“ stationsbezogen mit Redis-TTL erfassen.
+5. **Bestätigen statt gamifizieren:** einmal pro Sitzung „Noch aktuell?“, aber keine Punkte oder Geld pro Meldung.
+6. **Spam begrenzen:** Zufallstoken, kurze Aufbewahrung, Rate-Limits und Quarantäne; kein Geräte-Hash.
+7. **Kontrollmeldungen später:** `ticket_inspection` gehört nicht in den MVP und wird separat rechtlich und strategisch bewertet.
+
+Der vollständige Plan steht in [`docs/UMSETZUNGSPLAN.md`](docs/UMSETZUNGSPLAN.md).
+
 ---
 
 ## Was entstehen soll
 
 Pendler-Radar soll eine fokussierte Community-Plattform für aktuelle Beobachtungen im Schienenverkehr werden:
 
-1. Eine Person sieht eine Kontrolle oder eine andere relevante Beobachtung.
-2. Sie meldet diese mit Linie, Ort, Richtung und Beobachtungszeit.
-3. Der Server validiert die Eingabe, begrenzt Missbrauch und speichert die Meldung.
+1. Eine Person bemerkt einen aktuellen Zustand an einem Bahnhof oder in einem Zug, zum Beispiel einen defekten Aufzug, Überfüllung oder eine Störung.
+2. Die passende Station ist aus der aktuellen Stationsabfrage vorausgewählt; die Person meldet Kategorie, optional Linie und Beobachtungszeit.
+3. Der Server validiert die Eingabe, begrenzt Missbrauch und speichert die kurzlebige Meldung.
 4. Andere Fahrgäste sehen die Meldung in einer Liste und auf einer Karte.
 5. Die Meldung verliert nach einer kurzen, sichtbaren Frist ihre Aktualität und wird aus der öffentlichen Ansicht entfernt.
-6. Die Community kann falsche, doppelte oder problematische Meldungen markieren.
+6. Die Community kann falsche, doppelte oder problematische Meldungen markieren und bei Bedarf bestätigen.
 
 Der Dienst soll nicht mehr Daten sammeln als für diesen Ablauf erforderlich sind. Eine Meldung beschreibt einen Ort im Verkehrsnetz – nicht den exakten Standort einer Person. Öffentliche Meldungen erhalten keine Namen, Fotos, Telefonnummern oder Gerätekennungen.
 
@@ -90,6 +104,16 @@ Pendler-Radar konzentriert sich ausschließlich auf den **Schienenverkehr mit Z�
 - Fernverkehr, sofern er für das Startnetz ausdrücklich freigegeben wird.
 
 Nicht Bestandteil des Projekts sind Busse und Straßenbahnen. Sie werden weder als eigene Zugart modelliert noch in die erste Netz- oder Fahrplandatenquelle aufgenommen. Eine spätere Erweiterung wäre eine neue Produktentscheidung und kein stillschweigender Teil des MVP.
+
+### Verbindlicher MVP-Inhalt
+
+Der MVP verarbeitet zunächst nur harmlose, stationsbezogene Kategorien:
+
+- `elevator_out_of_order` – Aufzug oder Rolltreppe defekt
+- `crowded` – Zug oder Station ungewöhnlich überfüllt
+- `disruption` – sichtbare Störung oder Ausfall
+
+Die Station wird nach Möglichkeit aus der aktuellen Abfahrts- oder Stationsabfrage vorausgewählt. Die Meldung erhält eine Redis-TTL und verschwindet automatisch. Die Kategorie `ticket_inspection` beziehungsweise Meldungen zu Fahrkartenkontrollen gehören ausdrücklich nicht in den MVP. Diese Kategorie wird erst nach einem separaten rechtlichen, strategischen und communitybezogenen Entscheid eingeführt.
 
 ---
 
@@ -136,9 +160,12 @@ Pendler-Radar ist ausdrücklich nicht:
 - aktuelle Meldungen auf einer Karte sehen
 - nach Stadt, Verkehrsnetz, Zugart, Linie und Zeitraum filtern
 - die Entfernung zur Aktualität einer Meldung erkennen, zum Beispiel „vor 8 Minuten“
-- eine Meldung mit wenigen Pflichtangaben erstellen
-- einen Ort aus dem Verkehrsnetz auswählen statt beliebige private Ortsdaten einzugeben
+- eine harmlose Meldung mit wenigen Pflichtangaben erstellen
+- die vorausgewählte Station bestätigen oder eine andere Station aus dem Verkehrsnetz auswählen
+- eine Kategorie wie „Aufzug defekt“, „überfüllt“ oder „Störung“ auswählen
+- optional Linie, Richtung und Beobachtungszeit ergänzen
 - eine Meldung als veraltet, falsch, doppelt oder unangemessen markieren
+- eine aktuelle Meldung mit einem Tipp bestätigen, ohne dafür Punkte oder Geld zu erhalten
 - auch ohne öffentliches Nutzerprofil Meldungen lesen
 - verständliche Fehlermeldungen bekommen, wenn eine Meldung nicht angenommen wird
 
@@ -166,6 +193,7 @@ Pendler-Radar ist ausdrücklich nicht:
 
 ### Bewusst nicht im ersten MVP
 
+- keine Meldungen zu Fahrkartenkontrollen (`ticket_inspection`)
 - kein eigenes Bezahlsystem
 - keine Werbung und kein Verkauf von Standort- oder Nutzungsdaten
 - keine frei hochladbaren Medien
@@ -173,6 +201,7 @@ Pendler-Radar ist ausdrücklich nicht:
 - keine automatische Zuschreibung einer Meldung zu einer Person
 - keine Live-Verfolgung einzelner Züge, Fahrzeuge oder Menschen
 - kein automatischer Import ungeprüfter Chat-Nachrichten
+- keine Punkte oder Geldzahlungen pro Meldung
 
 ---
 
@@ -183,21 +212,20 @@ Pendler-Radar ist ausdrücklich nicht:
 Die meldende Person wählt mindestens:
 
 - Stadt oder Verkehrsnetz,
-- Zugart, zum Beispiel S-Bahn, Regionalbahn oder Fernverkehr,
-- Linie,
-- Haltestelle oder Streckenabschnitt,
-- Fahrtrichtung,
+- Station oder Bahnhof; nach Möglichkeit aus der aktuellen Stationsabfrage vorausgewählt,
+- eine erlaubte MVP-Kategorie,
 - Zeitpunkt der Beobachtung.
 
-Optional kann die Person eine kurze sachliche Ergänzung angeben. Freie Texte werden begrenzt, bereinigt und dürfen keine Namen, Kontaktdaten, Fotos oder anderen personenbezogenen Angaben enthalten.
+Optional können Zugart, Linie, Richtung und eine kurze sachliche Ergänzung angegeben werden. Freie Texte werden begrenzt, bereinigt und dürfen keine Namen, Kontaktdaten, Fotos oder andere personenbezogene Angaben enthalten. `ticket_inspection` ist in dieser Eingabemaske nicht verfügbar.
 
 ### 2. Validieren
 
 Die API prüft unter anderem:
 
 - ob das Verkehrsnetz aktiv ist,
-- ob Linie und Ort zu diesem Netz gehören,
-- ob die Richtung für die Linie gültig ist,
+- ob Station und optional angegebene Linie zu diesem Netz gehören,
+- ob die optionale Richtung für die angegebene Linie gültig ist,
+- ob die Kategorie im MVP erlaubt ist,
 - ob der Beobachtungszeitpunkt nicht in der Zukunft liegt,
 - ob der Zeitpunkt nicht außerhalb eines zulässigen Rückblickfensters liegt,
 - ob die Meldung die Längen- und Inhaltsgrenzen einhält,
@@ -236,6 +264,19 @@ Eine Person kann eine Meldung markieren. Je nach Regelwerk wird sie:
 - oder nach Prüfung wieder veröffentlicht.
 
 Eine Meldung darf nicht allein wegen vieler Markierungen automatisch als wahr oder falsch gelten. Markierungen sind ein Signal für Moderation, keine Abstimmung über Fakten.
+
+### Anreize ohne Spam-Gamification
+
+Die erste Version belohnt keine einzelne Meldung mit Geld, Punkten oder einem öffentlichen Rang. Solche Anreize würden erfundene Meldungen fördern und neue Trust-Score-Probleme schaffen.
+
+Stattdessen bekommt die meldende Person unmittelbares, nicht öffentliches Feedback:
+
+- die Meldung wurde angenommen oder abgelehnt,
+- sie läuft nach einer klaren Frist ab,
+- andere Personen konnten sie als weiterhin aktuell bestätigen,
+- die Meldung wurde wegen eines Problems zurückgehalten oder entfernt.
+
+Ein späterer „Beitrag wirkt“-Hinweis darf nur aggregierte, datensparsame Informationen verwenden und darf kein dauerhaftes Nutzerprofil voraussetzen.
 
 ---
 
@@ -315,9 +356,11 @@ Die eigentlichen Meldungen.
 | --- | --- |
 | `id` | zufällige Kennung |
 | `network_id` | Verkehrsnetz |
-| `line_id` | Linie |
-| `stop_id` oder `segment_id` | Haltestelle beziehungsweise Abschnitt |
-| `direction` | kontrollierte Fahrtrichtung |
+| `category` | MVP-Kategorie wie `elevator_out_of_order`, `crowded` oder `disruption` |
+| `station_id` | Station oder Bahnhof; im MVP erforderlich |
+| `line_id` | optionale Zuglinie |
+| `segment_id` | optionaler Streckenabschnitt |
+| `direction` | optionale, kontrollierte Fahrtrichtung |
 | `observed_at` | Zeitpunkt der Beobachtung in UTC gespeichert |
 | `created_at` | Zeitpunkt des Eingangs in UTC gespeichert |
 | `expires_at` | Ablaufzeit in UTC gespeichert |
@@ -490,6 +533,7 @@ Rate-Limits dürfen nicht dazu führen, dass die öffentliche Karte unnötig per
 - Lesen öffentlicher Meldungen ohne Konto im MVP
 - keine Pflicht zur Angabe von Name, E-Mail oder Telefonnummer für das Lesen
 - keine Veröffentlichung von IP-Adresse, Geräte-ID oder Kontaktinformationen
+- Caddy- und API-Logs mit IPs nur für dokumentierten Missbrauchsschutz und mit eigener kurzer Löschfrist
 - keine Browser-Geolocation als Voraussetzung für Meldungen
 - keine exakten Meldestandorte außerhalb kontrollierter Verkehrsnetzdaten
 - technische Metadaten nur für einen dokumentierten Zweck
@@ -557,6 +601,8 @@ Die Architektur ist noch nicht implementiert. Das Zielbild besteht aus wenigen, 
                     +------------------+
 ```
 
+Das Diagramm beschreibt den Zielzustand. Das Walking Skeleton startet absichtlich kleiner: geprüfter Abfahrts-Upstream, FastAPI und minimales Frontend. Redis kommt erst mit dem Cache- und Lastnachweis hinzu; PostgreSQL erst bei dauerhaftem Speicher- oder Moderationsbedarf.
+
 ### Komponenten
 
 | Komponente | Aufgabe |
@@ -576,7 +622,8 @@ Noch nicht festgelegt, aber für den MVP naheliegend:
 - TypeScript für gemeinsame Typen und Serverlogik
 - React oder eine vergleichbare PWA-Oberfläche
 - HTTP-API mit klar versionierten JSON-Endpunkten
-- PostgreSQL für relationale Daten und saubere Migrationen
+- PostgreSQL für den späteren dauerhaften Betrieb, relationale Daten und saubere Migrationen
+- Redis erst nach dem Cache- und Lastnachweis
 - Docker Compose für lokale Entwicklung und kleine selbst betriebene Installationen
 - OpenStreetMap-kompatible Kartendarstellung mit dokumentierter Attribution
 - GTFS oder ein vergleichbares, lizenziertes Format für Verkehrsnetzdaten
@@ -608,7 +655,8 @@ Diese Endpunkte sind ein Entwurf und noch nicht erreichbar. Die API wird version
 | `GET` | `/api/v1/health` | technischer Gesundheitsstatus für Monitoring |
 | `GET` | `/api/v1/networks` | verfügbare Städte und Verkehrsnetze |
 | `GET` | `/api/v1/networks/{id}` | Metadaten und Datenversion eines Netzes |
-| `GET` | `/api/v1/networks/{id}/lines` | Linien, Haltestellen und Richtungen |
+| `GET` | `/api/v1/networks/{id}/lines` | Linien, Stationen und Richtungen |
+| `GET` | `/api/v1/departures/{station_id}` | optionaler Abfahrts-Adapter und Stationskontext |
 | `GET` | `/api/v1/reports` | aktuelle, gefilterte Meldungen |
 | `POST` | `/api/v1/reports` | eine neue Meldung erstellen |
 | `POST` | `/api/v1/reports/{id}/flag` | eine Meldung zur Prüfung markieren |
@@ -620,10 +668,11 @@ Vorgesehene Struktur, noch nicht implementiert:
 
 ```json
 {
-  "networkId": "berlin",
+  "networkId": "example-network",
+  "category": "elevator_out_of_order",
+  "stationId": "example-station",
   "mode": "s_bahn",
   "lineId": "s2",
-  "stopId": "alexanderplatz",
   "direction": "bernau",
   "observedAt": "2026-09-17T12:34:00Z",
   "note": "Sachliche optionale Ergänzung"
@@ -637,10 +686,11 @@ Die API darf niemals blind Felder aus diesem JSON übernehmen. Sie löst IDs geg
 ```json
 {
   "id": "rpt_7f3b1e...",
-  "networkId": "berlin",
+  "networkId": "example-network",
+  "category": "elevator_out_of_order",
+  "station": "Example Station",
   "mode": "s_bahn",
   "line": "S2",
-  "stop": "Alexanderplatz",
   "direction": "Bernau",
   "observedAt": "2026-09-17T12:34:00Z",
   "createdAt": "2026-09-17T12:35:12Z",
@@ -847,15 +897,18 @@ Der MVP gilt erst dann als vorzeigbar, wenn alle folgenden Punkte erfüllt sind:
 
 ### Funktion
 
-- [ ] Eine ausgewählte Stadt beziehungsweise ein Netz kann geladen werden.
-- [ ] Linien, Haltestellen und Richtungen stammen aus versionierten Netzdaten.
-- [ ] Eine gültige Meldung kann erstellt und öffentlich angezeigt werden.
-- [ ] Eine ungültige Linie-Ort-Kombination wird serverseitig abgelehnt.
-- [ ] Beobachtungs- und Eingangszeitpunkt werden getrennt angezeigt beziehungsweise verarbeitet.
-- [ ] Abgelaufene Meldungen erscheinen nicht mehr in der aktuellen Ansicht.
+- [ ] Eine geprüfte Datenquelle liefert echte Stationen und Abfahrten.
+- [ ] Eine Station kann ausgewählt und in einer Minimaloberfläche angezeigt werden.
+- [ ] Die MVP-Kategorien sind auf Aufzug defekt, überfüllt und Störung begrenzt.
+- [ ] Eine stationsbezogene Meldung kann erstellt und öffentlich angezeigt werden.
+- [ ] Eine ungültige Stations- oder optionale Linienreferenz wird serverseitig abgelehnt.
+- [ ] Beobachtungs- und Eingangszeitpunkt werden getrennt verarbeitet.
+- [ ] Redis-TTL blendet abgelaufene Meldungen aus.
+- [ ] Eine Sitzung fragt höchstens einmal, ob eine offene Meldung noch aktuell ist.
+- [ ] `ticket_inspection` ist nicht auswählbar.
 - [ ] Liste und Karte zeigen dieselbe veröffentlichte Datenbasis.
 - [ ] Filter funktionieren auch ohne Reload der gesamten Anwendung.
-- [ ] Eine Meldung kann markiert und moderiert werden.
+- [ ] Eine Meldung kann markiert und moderiert werden, sobald dauerhafte Moderation implementiert ist.
 
 ### Sicherheit und Datenschutz
 
@@ -888,54 +941,88 @@ Der MVP gilt erst dann als vorzeigbar, wenn alle folgenden Punkte erfüllt sind:
 
 ## Roadmap
 
-### Phase 0 – Grundlage
+### Phase 0 – Entscheidungen an einem Abend
 
 - [x] Projektname und Zielrichtung festlegen
-- [x] Anforderungen, Grenzen und Datenschutzprinzipien dokumentieren
-- [x] aktueller Projektstatus transparent machen
-- [ ] rechtliche und datenschutzrechtliche Prüfung vorbereiten
-- [ ] Zielstadt und erstes Verkehrsnetz auswählen
-- [ ] Technologie, Lizenz und Datenquellen festlegen
-- [ ] erstes Bedrohungsmodell als eigenes Dokument anlegen
+- [x] Geltungsbereich auf Züge festlegen: U-Bahn, S-Bahn, Regional- und optional Fernverkehr
+- [x] Kontrollmeldungen ausdrücklich aus dem MVP herausnehmen
+- [ ] harmlose MVP-Kategorien verbindlich festlegen
+- [ ] Rollen und Verantwortlichkeiten klären
+- [ ] Frontend-Stack nach vorhandenen Kenntnissen auswählen
+- [ ] GitHub-Issues für Entscheidungen, Risiken und Datenquellen anlegen
+- [ ] Datenschutz- und Bedrohungsmodell als Arbeitsdokument beginnen
 
-### Phase 1 – Technischer Kern
+### Phase 1 – Daten-Spike vor Infrastruktur
 
-- [ ] Repository-Struktur anlegen
-- [ ] Entwicklungsumgebung reproduzierbar machen
-- [ ] Verkehrsnetz als versionierten Datensatz einlesen
+- [ ] kleine Tests gegen echte Stationen in Münster ausführen
+- [ ] `db.transport.rest` als mögliche Datenquelle prüfen
+- [ ] DB Timetables API als mögliche Datenquelle prüfen
+- [ ] DELFI/GTFS-Datenquellen prüfen
+- [ ] Vollständigkeit, Aktualität, Antwortzeiten und Fehlerverhalten vergleichen
+- [ ] Nutzung, Attribution und Lizenzen jeder Quelle dokumentieren
+- [ ] entscheiden, welche Quelle für den Walking Skeleton und welche für Netzdaten verwendet wird
+
+Münster ist in dieser Phase nur ein überschaubares Testnetz und nicht automatisch die spätere Startstadt.
+
+### Phase 2 – Walking Skeleton
+
+- [ ] FastAPI mit `/api/v1/departures/{station_id}`
+- [ ] minimales Frontend mit Stationsauswahl und Abfahrtsliste
+- [ ] Docker Compose nur für die unbedingt nötigen Komponenten
+- [ ] Caddy höchstens als einfacher Reverse-Proxy für die Demo
+- [ ] ohne Redis, PostgreSQL und Kartenintegration starten
+- [ ] Upstream-Timeout, verständliche Fehler und einfache Logs
+
+Nach dieser Phase existiert ein vorzeigbares Produkt: Eine Station kann ausgewählt und mit aktuellen Daten angezeigt werden. Dafür muss noch keine endgültige Plattformarchitektur stehen.
+
+### Phase 3 – Caching und Lastnachweis
+
+- [ ] Redis für Cache und Request-Coalescing ergänzen
+- [ ] adaptive TTL für nahe und spätere Abfahrten testen
+- [ ] Stale-While-Revalidate nur bei nachgewiesenem Nutzen einsetzen
+- [ ] Locust-Lasttest mit 100 parallelen Nutzer:innen ausführen
+- [ ] belegen, dass bei einem Cache-Miss höchstens ein Upstream-Request entsteht
+- [ ] Upstream-Fehler, Redis-Ausfall und Lock-Ablauf testen
+
+### Phase 4 – Harmlose stationsbezogene Meldungen
+
+- [ ] Kategorien `elevator_out_of_order`, `crowded` und `disruption`
+- [ ] Station aus der aktuellen Abfrage vorauswählen
+- [ ] Meldung mit einem Tipp und möglichst wenig Text erstellen
+- [ ] Meldung stationsbasiert in Redis mit TTL speichern
+- [ ] beim Abruf einer Station höchstens einmal pro Sitzung fragen: „Noch aktuell? Ja / Nein“
+- [ ] Bestätigung und Ablauf in Liste und Karte sichtbar machen
+- [ ] Meldenden die Wirkung ihrer Meldung erklären, aber keine Punkte oder Geld pro Meldung vergeben
+- [ ] Datenminimierung und Löschverhalten messen
+
+### Phase 5 – Spam-Schutz und Bestätigungen
+
+- [ ] zufälliges, undurchsichtiges Token statt Geräte-Hash prüfen
+- [ ] Token nur für Rate-Limit und Missbrauchsschutz verwenden, nicht als Authentifizierung
+- [ ] kurze Lebensdauer, Rotation und Löschung dokumentieren
+- [ ] IP- und Caddy-Logs mit eigener kurzer Löschfrist behandeln
+- [ ] rechtliche Prüfung der erforderlichen Speicherung, insbesondere TDDDG/Datenschutz
+- [ ] bei Bedarf Bestätigung durch mehrere technisch verschiedene, kurzlebige Tokens erproben
+- [ ] Kaltstart offen lösen: neue Meldungen sichtbar, aber als unbestätigt kennzeichnen; keine dauerhafte Personenbewertung
+- [ ] Rate-Limits und Quarantäne testen
+
+### Phase 6 – Kontrollkategorie als eigene Entscheidung
+
+- [ ] `ticket_inspection` nicht automatisch implementieren
+- [ ] rechtliche Risiken und strategische Zielrichtung getrennt bewerten
+- [ ] Community-Regeln, Moderation und Missbrauchsschutz vorab prüfen
+- [ ] nur bei positiver Entscheidung eine zusätzliche Kategorie und eigene Ablaufregeln spezifizieren
+- [ ] keine Kontrollkategorie in den MVP-Abnahmekriterien verstecken
+
+### Phase 7 – Stabilisierung und Betrieb
+
+- [ ] PostgreSQL erst aufnehmen, wenn dauerhafte Daten, Moderation oder Auswertung benötigt werden
 - [ ] Datenmodell und Migrationen implementieren
-- [ ] Domänenregeln für Meldungsstatus und Ablauf implementieren
-- [ ] API für Lesen und Erstellen von Meldungen bauen
-- [ ] automatische Ablauf- und Bereinigungsjobs implementieren
-- [ ] automatisierte Tests einrichten
-
-### Phase 2 – Nutzbarer MVP
-
-- [ ] mobile Liste und Karte
-- [ ] Meldeformular mit kontrollierten Linien und Haltestellen
-- [ ] sichtbares Alter jeder Meldung
-- [ ] Filter für Netz, Zugart, Linie, Richtung und Zeitraum
-- [ ] Markieren-, Quarantäne- und Moderationsablauf
-- [ ] Rate-Limits und Missbrauchsschutz
-- [ ] erste selbst betriebene Testinstanz
-- [ ] erste vollständige Datenschutz- und Nutzerdokumentation
-
-### Phase 3 – Stabilisierung
-
-- [ ] Barrierefreiheit prüfen und dokumentieren
-- [ ] Datenschutz- und Sicherheitsdokumentation gegen Code und Betrieb prüfen
+- [ ] Liste, Karte und Barrierefreiheit vervollständigen
 - [ ] Backup, Restore und Monitoring testen
-- [ ] Last- und Ausfalltests durchführen
-- [ ] Karten- und Netzdatenlizenzen prüfen
+- [ ] Sicherheits- und Datenschutzdokumentation gegen den Code prüfen
 - [ ] öffentliche Pilotphase mit klarer Feedbackmöglichkeit
-
-### Phase 4 – Ausbau
-
-- [ ] weitere Verkehrsnetze nach Datenqualitätsprüfung hinzufügen
-- [ ] optionalen, kontrollierten Community-Import entwickeln
-- [ ] Mehrsprachigkeit und weitere Barrierefreiheitsverbesserungen
-- [ ] Push-Hinweise nur mit ausdrücklicher Einwilligung
-- [ ] unabhängige Sicherheitsprüfung vor größerem Betrieb
+- [ ] weitere Verkehrsnetze erst nach Prüfung der Datenqualität hinzufügen
 
 ---
 

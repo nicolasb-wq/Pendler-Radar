@@ -1,8 +1,22 @@
 # Pendler-Radar – technischer Umsetzungsplan
 
 **Status:** überarbeiteter Entwurf, noch nicht implementiert  
-**Version:** 0.2  
+**Version:** 0.3
 **Stand:** 17. September 2026
+
+## Kurzfassung
+
+1. **Daten-Spike zuerst:** Echte Stationen in Münster gegen `db.transport.rest`, DB Timetables API und DELFI/GTFS prüfen. Vollständigkeit, Aktualität, Fehlerverhalten und Lizenzen dokumentieren.
+2. **Walking Skeleton:** FastAPI mit `/api/v1/departures/{station_id}` und ein minimales Frontend. Docker Compose, aber zunächst ohne Redis, PostgreSQL und Karte.
+3. **Caching:** Redis, Request-Coalescing und adaptive TTL. Locust belegt, dass 100 parallele Anfragen höchstens einen Upstream-Request auslösen.
+4. **Harmlose Meldungen:** Stationsbezogen „Aufzug defekt“, „überfüllt“ und „Störung“ per Tipp melden; Redis-TTL; Station aus dem aktuellen Kontext vorauswählen.
+5. **Bestätigungen und Anreize:** Einmal pro Sitzung „Noch aktuell? Ja / Nein“. Kein Geld, keine Punkte, kein öffentliches Ranking – nur verständliches Feedback zur Wirkung einer Meldung.
+6. **Spam-Schutz:** Zufallstoken statt Geräte-Hash, kurze Lebensdauer, Rate-Limits und Quarantäne. Rechtliche Prüfung der erforderlichen Speicherung einschließlich § 25 Abs. 2 Nr. 2 TDDDG.
+7. **Kontrollkategorie später:** `ticket_inspection` ist nicht im MVP. Erst eine eigene rechtliche, strategische und communitybezogene Entscheidung.
+
+Nach dem Walking Skeleton existiert bereits ein vorzeigbares Produkt, unabhängig davon, ob die spätere Meldeplattform oder die Kontrollkategorie umgesetzt wird.
+
+---
 
 Dieser Plan überarbeitet die erste Rohfassung des Projekts. Er trennt bewusst zwischen:
 
@@ -11,6 +25,24 @@ Dieser Plan überarbeitet die erste Rohfassung des Projekts. Er trennt bewusst z
 - technischen Entscheidungen,
 - späteren Ausbaustufen,
 - offenen Fragen, die vor dem produktiven Betrieb geklärt werden müssen.
+
+## Leitentscheidung: Daten zuerst, Infrastruktur danach
+
+Die größte Unbekannte ist nicht Docker, FastAPI oder Redis, sondern die Datenbasis. Wenn Stations-, Linien- und Abfahrtsdaten nicht vollständig, aktuell, erreichbar oder rechtssicher nutzbar sind, ist jedes Infrastruktur-Setup davor verschwendet.
+
+Darum beginnt das Projekt mit einem kleinen Daten-Spike gegen echte Stationen. Erst wenn eine belastbare Quelle gefunden ist, entsteht ein Walking Skeleton. Redis, PostgreSQL, Karte und Echtzeitkanal kommen erst hinzu, wenn der vorherige Schritt einen konkreten Bedarf belegt.
+
+## Produktentscheidung: harmlose Meldungen zuerst
+
+Der MVP konzentriert sich auf stationsbezogene, unkritische Meldungen:
+
+- `elevator_out_of_order`: Aufzug oder Rolltreppe defekt
+- `crowded`: Zug oder Station ungewöhnlich überfüllt
+- `disruption`: sichtbare Störung oder Ausfall
+
+Die Kategorie `ticket_inspection` gehört **nicht** in den MVP. Sie wird erst nach einer separaten rechtlichen, strategischen und communitybezogenen Prüfung betrachtet. Technisch wäre sie später lediglich eine zusätzliche Kategorie; fachlich ist sie eine eigene Produktentscheidung.
+
+Die erste Meldung wird mit einem Tipp und möglichst wenig Text erstellt. Die aktuelle Station soll aus dem Stations- oder Abfahrtskontext vorausgewählt werden. Kurzlebige Meldungen werden zunächst mit Redis-TTL umgesetzt. Eine dauerhafte Datenbank kommt erst hinzu, wenn Moderation, Auswertung oder längerfristige Betriebsanforderungen dies rechtfertigen.
 
 Die wichtigste Änderung gegenüber der Rohfassung lautet:
 
@@ -22,15 +54,17 @@ Die wichtigste Änderung gegenüber der Rohfassung lautet:
 
 ## 1. Ziel des Projekts
 
-Pendler-Radar soll aktuelle, gemeinschaftlich gemeldete Hinweise im Schienenverkehr anzeigen. Im ersten Anwendungsfall geht es um Beobachtungen zu Fahrkartenkontrollen:
+Pendler-Radar soll aktuelle, gemeinschaftlich gemeldete Hinweise im Schienenverkehr anzeigen. Im MVP geht es zunächst um harmlose, stationsbezogene Meldungen:
 
-1. Eine Person wählt Verkehrsnetz, Linie, Ort, Richtung und Beobachtungszeit.
-2. Die Anwendung prüft die Eingabe und begrenzt Missbrauch.
-3. Die Meldung erscheint mit sichtbarem Alter in einer Liste und auf einer Karte.
-4. Nach kurzer Zeit verliert sie automatisch ihre Aktualität.
-5. Falsche, doppelte oder problematische Meldungen können markiert und moderiert werden.
+1. Eine Person öffnet den Kontext einer Station oder ruft deren Abfahrten ab.
+2. Die Station ist im Meldeformular vorausgewählt.
+3. Die Person tippt eine Kategorie wie „Aufzug defekt“, „überfüllt“ oder „Störung“ an.
+4. Die Anwendung prüft die Eingabe, begrenzt Missbrauch und speichert eine kurzlebige Meldung.
+5. Andere Fahrgäste sehen die Meldung mit sichtbarem Alter.
+6. Beim späteren Abruf kann die Anwendung höchstens einmal pro Sitzung fragen, ob sie noch aktuell ist.
+7. Nach der TTL verliert die Meldung automatisch ihre Aktualität.
 
-Die Anwendung ist keine offizielle Auskunft eines Verkehrsunternehmens. Sie ersetzt kein gültiges Ticket und garantiert nicht, dass eine Meldung richtig oder noch aktuell ist.
+Die Kategorie `ticket_inspection` ist kein MVP-Bestandteil. Sie wird erst in einer eigenen Entscheidung nach rechtlicher und strategischer Prüfung betrachtet. Die Anwendung ist keine offizielle Auskunft eines Verkehrsunternehmens. Meldungen können falsch oder veraltet sein.
 
 ### Produktprinzipien
 
@@ -40,6 +74,8 @@ Die Anwendung ist keine offizielle Auskunft eines Verkehrsunternehmens. Sie erse
 - **Sachlichkeit:** Keine Namen, Fotos, Audioaufnahmen oder Identifizierung von Personen.
 - **Offene Unsicherheit:** Eine Community-Meldung ist keine amtliche Bestätigung.
 - **Nachvollziehbarkeit:** Datenflüsse, Aufbewahrung und Betriebsgrenzen werden dokumentiert.
+- **Daten zuerst:** Erst Datenquelle und Lizenz prüfen, dann Infrastruktur aufbauen.
+- **Harmloser Start:** Kontrollmeldungen werden nicht heimlich in den MVP geschoben.
 
 ### Verbindlicher Geltungsbereich: nur Züge
 
@@ -67,48 +103,48 @@ Busse und Straßenbahnen sind nicht Teil des MVP. Sie werden nicht in die erste 
 
 ---
 
-## 3. Umfang und Prioritäten
+## 3. MVP-Umfang und Prioritäten
 
-### 3.1 Muss in den MVP
+### 3.1 Was in den MVP gehört
 
-- eine ausgewählte Stadt oder ein ausgewähltes Verkehrsnetz
-- statische Netzdaten für Linien, Haltestellen und Richtungen
-- API zum Lesen aktueller Meldungen
-- API zum Erstellen einer Meldung
-- Liste und Karte im mobilen Frontend
-- sichtbare Beobachtungszeit und sichtbares Alter
-- automatische Ablaufzeit
-- serverseitige Validierung aller Eingaben
+- Daten-Spike gegen echte Stationen und mehrere mögliche Datenquellen
+- minimales Frontend mit Stationsauswahl und Abfahrtsliste
+- FastAPI-Endpunkt `/api/v1/departures/{station_id}`
+- reproduzierbarer Docker-Compose-Start für das Walking Skeleton
+- Redis-Cache mit Request-Coalescing und TTL, sobald der Lasttest den Bedarf zeigt
+- harmlose stationsbezogene Kategorien:
+  - `elevator_out_of_order`
+  - `crowded`
+  - `disruption`
+- Station aus dem aktuellen Stations- oder Abfahrtskontext vorauswählen
+- Meldungen mit kurzer TTL speichern
+- einmalige Frage pro Sitzung, ob eine offene Meldung noch aktuell ist
+- einfache Bestätigung ohne Punkte oder Geld
 - Basis-Rate-Limit und Schutz vor offensichtlichem Spam
-- Markieren und einfaches Moderieren von Meldungen
-- PostgreSQL mit Migrationen
-- automatisierte Tests für Kernlogik und API
-- lokale reproduzierbare Entwicklungsumgebung
-- grundlegende Datenschutz- und Sicherheitsdokumentation
+- automatisierte Tests für Cache, Meldungen, Ablauf und Upstream-Fehler
 
 ### 3.2 Sinnvoll, wenn Zeit bleibt
 
-- Redis-Cache für externe Abfahrtsdaten
-- Request-Coalescing beziehungsweise Singleflight für Cache-Misses
-- Stale-While-Revalidate für nicht kritische Fahrplandaten
+- PostgreSQL erst für dauerhafte Moderation, Auswertung oder Betriebsdaten
 - Server-Sent Events für schnellere Aktualisierung
-- zusätzliche Qualitätsindikatoren auf Basis unabhängiger, aktueller Meldungen
-- vorbereitete Unterstützung eines zweiten Verkehrsnetzes
-- vollständiges Betriebs- und Restore-Runbook
+- Stale-While-Revalidate für nicht kritische Abfahrtsdaten
+- Locust-Lasttest und dokumentierter Nachweis, dass 100 parallele Nutzer:innen nur einen Upstream-Request auslösen
+- mehrere Datenquellen hinter einem Adapter
+- Barrierefreiheit, Kartenansicht und weitere Netze
 
-### 3.3 Nicht im ersten MVP
+### 3.3 Ausdrücklich nach dem MVP
 
-- Microservice-Verbund mit mehreren unabhängig deploybaren Fachservices
-- GPS-Prüfung der meldenden Person
-- Geräte-Fingerprinting
+- `ticket_inspection` beziehungsweise Meldungen zu Fahrkartenkontrollen
+- rechtliche und strategische Bewertung dieser Kategorie
 - dauerhafter Trust-Score
-- automatischer Telegram-Import
-- Push-Benachrichtigungen
-- native Android- und iOS-Apps
-- komplexe Nutzerkonten und soziale Profile
 - automatische Routenempfehlungen zur Umgehung von Kontrollen
-- eigene Fahrplandatenbank für ganz Deutschland
-- Echtzeit-WebSockets, falls Polling oder SSE ausreichen
+- Telegram-Import
+- Push-Benachrichtigungen
+- native Apps
+- Microservice-Verbund mit mehreren unabhängig deploybaren Fachservices
+- Geräte-Fingerprinting und Nutzer-GPS
+
+Die Reihenfolge ist absichtlich daten- und ergebnisorientiert: Nach dem Walking Skeleton existiert bereits ein vorzeigbares Produkt, auch wenn spätere Meldungs- und Moderationsfunktionen verworfen werden sollten.
 
 ---
 
@@ -118,8 +154,8 @@ Diese Fragen sind wichtiger als die Wahl zwischen Vue, React oder Svelte:
 
 1. **Welche Stadt startet?** Berlin, Dresden oder ein anderes Netz?
 2. **Welche Zugarten gehören zum Startumfang?** U-Bahn, S-Bahn, Regionalbahn, Regional-Express und/oder Fernverkehr? Busse und Straßenbahnen gehören ausdrücklich nicht zum Umfang.
-3. **Was genau ist eine Meldung?** Nur Fahrkartenkontrollen in Zügen oder auch Störungen, Ausfälle und Baustellen?
-4. **Wie lange gilt eine Meldung als aktuell?** Ein einheitlicher Wert oder abhängig von der Zugart?
+3. **Welche harmlosen Meldungskategorien starten?** Aufzug defekt, überfüllt, Störung und welche weiteren Kategorien sind sinnvoll?
+4. **Wie lange gilt eine Meldung als aktuell?** Ein einheitlicher Wert oder abhängig von der Kategorie beziehungsweise Zugart?
 5. **Braucht das MVP externe Abfahrtsdaten überhaupt?** Für Meldungen können statische Netzdaten genügen.
 6. **Wie werden neue Meldungen behandelt?** Sofort sichtbar, gedämpft dargestellt oder bei auffälliger Rate quarantänisiert?
 7. **Wie kann die Community moderieren, ohne Nutzerprofile aufzubauen?**
@@ -135,6 +171,15 @@ Eine technische Funktion kommt nur in den MVP, wenn sie mindestens einen dieser 
 - sie reduziert ein konkretes Sicherheits- oder Missbrauchsrisiko,
 - sie ist für die IHK-Projektabgrenzung fachlich relevant,
 - sie lässt sich innerhalb des verfügbaren Zeitbudgets testen und betreiben.
+
+### Name und Außenwirkung
+
+„Radar“ kann Assoziationen mit einem Kontrollradar oder einer App zum Umgehen von Kontrollen wecken. Das ist eine bewusste Produktentscheidung und darf nicht nebenbei passieren. Vor einer öffentlichen Veröffentlichung sollten geprüft werden:
+
+- Marken- und Namenskonflikte beim DPMA,
+- App-Store-Namen und ähnliche Anwendungen,
+- Domain und Social-Media-Namen,
+- Verständlichkeit für die harmlose MVP-Ausrichtung.
 
 ---
 
@@ -183,6 +228,8 @@ Eine technische Funktion kommt nur in den MVP, wenn sie mindestens einen dieser 
 ```
 
 Der Worker verwendet möglichst dieselben Domänenmodule wie die API, wird aber als eigener Prozess gestartet. Das ist eine sinnvolle Trennung für Hintergrundaufgaben, ohne aus jedem Modul einen eigenen Netzwerkdienst zu machen.
+
+Dieses Diagramm beschreibt den Zielzustand nach den Daten- und Cache-Spikes. Das Walking Skeleton startet bewusst kleiner: FastAPI, minimales Frontend und der geprüfte Upstream. Redis kommt beim Cache-Nachweis hinzu; PostgreSQL erst bei dauerhaftem Speicher- oder Moderationsbedarf.
 
 ### 5.2 Fachliche Module im Backend
 
@@ -255,6 +302,27 @@ Eine räumliche Datenbank einzusetzen, nur um ein 100-Meter-Geohash aus einer Nu
 
 ## 7. Datenquellen und Fahrplan-Integration
 
+### 7.0 Daten-Spike vor Infrastruktur
+
+Der erste technische Arbeitsschritt ist kein Docker-Setup, sondern ein kleines Prüfprogramm gegen echte Stationen. Münster eignet sich als überschaubares Testnetz; die Stadt wird dadurch noch nicht als spätere Produkt- oder Startstadt festgelegt.
+
+Kandidaten für den Vergleich:
+
+- `db.transport.rest` für Abfahrts- und Stationsabfragen,
+- DB Timetables API, sofern Zugang und Nutzungsbedingungen passen,
+- DELFI/GTFS-Daten für statische Linien-, Stations- und Fahrplandaten.
+
+Das Prüfprogramm soll für eine feste Liste realer Stationen erfassen:
+
+- ob die Station gefunden wird,
+- ob Abfahrten vollständig und aktuell wirken,
+- wie schnell und stabil die Antwort kommt,
+- wie sich Ausfälle, leere Antworten und Rate-Limits verhalten,
+- welche Lizenz, Attribution und Nutzungsgrenze gilt,
+- ob die Quelle für einen selbst betriebenen Dienst verwendet werden darf.
+
+Ergebnis des Spikes ist eine kurze Vergleichsdokumentation mit Rohdaten, Messwerten und einer Entscheidung für den Walking Skeleton. Eine Quelle darf nicht nur gewählt werden, weil sie im Browser eine Antwort liefert.
+
 ### 7.1 Statische Netzdaten
 
 Die Meldefunktion braucht eine stabile Zuordnung von:
@@ -323,16 +391,20 @@ Eine Meldung braucht im MVP:
 
 - `id`: zufällige, nicht fortlaufende Kennung
 - `network_id`
-- `mode`
-- `line_id`
-- `stop_id` oder `segment_id`
-- `direction`
+- `category`: `elevator_out_of_order`, `crowded` oder `disruption`
+- `station_id`: Station oder Bahnhof; im MVP erforderlich
+- `mode`: optionale Zugart
+- `line_id`: optionale Zuglinie
+- `segment_id`: optionaler Streckenabschnitt
+- `direction`: optionale, kontrollierte Fahrtrichtung
 - `observed_at`
 - `created_at`
 - `expires_at`
 - `status`
 - optionaler, kurzer, bereinigter Hinweistext
 - `source`, zum Beispiel `web`
+
+Die Meldung wird stationsbezogen gespeichert. Der Stationskontext kann aus der vorherigen Abfahrtsabfrage stammen; eine freie GPS-Position ist nicht erforderlich.
 
 Nicht benötigt werden:
 
@@ -408,13 +480,24 @@ Für den MVP wird deshalb empfohlen:
 - zusätzliche Challenge nur bei Auffälligkeit,
 - keine Behauptung, anonyme Einsendungen seien eine sichere Identität.
 
-Ob ein kurzlebiger, serverseitig ausgegebener Anti-Abuse-Token sinnvoll ist, wird getrennt geprüft. Er wäre ein Missbrauchsschutz, keine Authentifizierung und kein Trust-Score.
+### Zufallstoken für Spam-Schutz
+
+Falls Rate-Limits über eine Sitzung hinaus erforderlich sind, kann der Server ein zufälliges, undurchsichtiges Token ausgeben. Es ist kein Hash, keine Geräte-ID und keine Authentifizierung.
+
+- Token serverseitig zufällig erzeugen, nicht aus Gerätewerten ableiten.
+- Token nur für Missbrauchsschutz und Rate-Limits verwenden.
+- kurze Lebensdauer und Rotation vorsehen.
+- Token nicht öffentlich ausgeben und nicht als Nutzerprofil verwenden.
+- Löschung und technische Logs getrennt dokumentieren.
+
+Ob die Speicherung eines solchen Tokens im konkreten Setup als unbedingt erforderlich behandelt werden kann und ob eine Ausnahme nach § 25 Abs. 2 Nr. 2 TDDDG greift, muss rechtlich geprüft werden. Das ist keine automatische Freistellung und keine Rechtsberatung.
 
 ### Consent und TDDDG
 
-Ein Consent-Banner ist kein Ersatz für ein Datenschutzkonzept. Vor dem Banner muss geklärt werden, welche Speicherung tatsächlich erforderlich ist.
+Ein Consent-Banner ist nicht zwingend für jede Kernfunktion. Zuerst wird getrennt, was für die Funktion unbedingt erforderlich ist und was optional ist.
 
-- Der Kern der öffentlichen Ansicht sollte ohne nicht erforderliches Tracking funktionieren.
+- Der Kern der öffentlichen Ansicht soll ohne nicht erforderliches Tracking funktionieren.
+- Ein notwendiger Anti-Abuse-Token ist kein Freibrief für weitere Analyse oder Werbung.
 - Optionale lokale Präferenzen, Push oder Geolocation brauchen eine eigene Betrachtung.
 - Ein lokaler Schlüssel oder Cookie darf nicht automatisch als „anonym“ bezeichnet werden.
 - Rechtsgrundlage, Zweck, Speicherdauer und Widerruf müssen vor dem Produktivbetrieb geprüft werden.
@@ -446,18 +529,34 @@ Im MVP wird Qualität über den Kontext bewertet:
 - Rate und Muster des Einsenders auf kurzer Zeitbasis,
 - Duplikate,
 - Meldungen der Community,
-- unabhängige weitere Beobachtungen im gleichen Zeitfenster.
+- weitere Beobachtungen im gleichen Zeitfenster.
 
 Eine Meldung darf bei Auffälligkeit quarantänisiert werden. Neue Meldungen werden nicht grundsätzlich unsichtbar gemacht.
 
-### 10.3 Bestätigungen als spätere Funktion
+### 10.3 Mehrheitsbestätigung und Kaltstart
 
-Falls später eine Bestätigungsschaltfläche kommt, soll sie zunächst nur ein Qualitätssignal für die Oberfläche sein. Sie darf nicht automatisch:
+Für harmlose Meldungen kann später eine Mehrheitsbestätigung erprobt werden. Mehrere technisch verschiedene, kurzlebige Tokens können eine Meldung unabhängig voneinander als „noch aktuell“ bestätigen.
 
-- den Beitrag als amtlich wahr markieren,
-- den Autor:innen einen dauerhaften Score geben,
-- eine andere Meldung löschen,
-- neue Nutzer:innen benachteiligen.
+Dabei gilt:
+
+- „unabhängig“ darf nicht als sicher bewiesene Personenunabhängigkeit bezeichnet werden.
+- Mehrere Tokens können von einer Person erzeugt oder koordiniert werden.
+- Bestätigungen sind ein Qualitätssignal, keine amtliche Wahrheit.
+- Die konkrete Schwelle wird mit Pilotdaten bestimmt, nicht blind als `2 von 3` festgeschrieben.
+- Eine neue Meldung wird zum Kaltstart nicht grundsätzlich blockiert.
+- Die Oberfläche kann eine neue Meldung als „noch unbestätigt“ kennzeichnen.
+- Tokens werden nicht zu einem dauerhaften Nutzer-Trust-Score zusammengeführt.
+
+### 10.4 Anreize ohne Fehlanreize
+
+Die Anwendung zahlt im MVP kein Geld und vergibt keine Punkte pro Meldung. Stattdessen erhält die meldende Person unmittelbares Feedback:
+
+- Meldung angenommen, abgelehnt oder abgelaufen,
+- Bestätigung durch weitere Sitzungen,
+- sichtbare Wirkung auf die aktuelle Stationsansicht,
+- verständlicher Grund bei Quarantäne oder Entfernung.
+
+Ein späterer „Beitrag wirkt“-Hinweis darf nur aggregiert und datensparsam sein. Er darf kein öffentliches Ranking und kein dauerhaftes Verhaltensprofil voraussetzen.
 
 ---
 
@@ -465,7 +564,7 @@ Falls später eine Bestätigungsschaltfläche kommt, soll sie zunächst nur ein 
 
 ### 11.1 Stufe 1: Polling
 
-Für den MVP wird zunächst ein periodischer Abruf empfohlen:
+Für den MVP wird zunächst ein periodischer Abruf empfohlen. Ein Intervall von etwa 30 Sekunden ist ein Startwert und wird gegen Datenfrische, Last und Batterieverbrauch gemessen:
 
 - aktuelle Meldungen beim Laden,
 - Aktualisierung in einem begrenzten Intervall,
@@ -494,6 +593,20 @@ WebSockets werden erst eingesetzt, wenn Messungen zeigen, dass Polling oder SSE 
 
 ---
 
+### 11.4 Deep-Links zu offiziellen Apps
+
+Ein Deep-Link wie `dbnavigator://` ist keine stabile Plattform-Schnittstelle. Vor einer Aufnahme in die Oberfläche muss für iOS, Android, Browser und PWA geprüft werden:
+
+- ob das Schema dokumentiert oder nur beobachtet ist,
+- ob die App installiert ist,
+- ob der Browser den Link blockiert,
+- ob ein sicherer Web-Fallback vorhanden ist,
+- ob keine privaten Daten in die URL gelangen.
+
+Deep-Links sind daher nicht Bestandteil des Walking Skeleton. Zuerst wird mit echten Geräten getestet; bis dahin verlinkt die Anwendung auf eine normale, offizielle Web-Adresse.
+
+---
+
 ## 12. Datenschutz ohne Nutzer-GPS
 
 Die Rohfassung möchte die GPS-Position nur im RAM prüfen und nicht speichern. Das reduziert zwar die Speicherung, beseitigt aber nicht alle Risiken:
@@ -507,7 +620,7 @@ Die Rohfassung möchte die GPS-Position nur im RAM prüfen und nicht speichern. 
 Daher wird im MVP keine GPS-Prüfung durchgeführt. Stattdessen:
 
 - Nutzer:innen wählen einen Ort aus kontrollierten Netzdaten.
-- Plausibilität wird über Linie, Haltestelle, Richtung und Zeit geprüft.
+- Plausibilität wird über Station, optional Linie und Richtung sowie Zeit geprüft.
 - Missbrauch wird über Rate-Limits, Quarantäne und Moderation behandelt.
 - Geolocation bleibt eine mögliche spätere, separat geprüfte Funktion – nicht die Grundlage der Authentifizierung.
 
@@ -525,7 +638,7 @@ Daher wird im MVP keine GPS-Prüfung durchgeführt. Stattdessen:
 | `GET` | `/api/v1/reports` | aktuelle Meldungen mit Filtern |
 | `POST` | `/api/v1/reports` | neue Meldung anlegen |
 | `POST` | `/api/v1/reports/{report_id}/flags` | Meldung markieren |
-| `GET` | `/api/v1/departures/{station_id}` | optionaler, begrenzter Fahrplan-Proxy |
+| `GET` | `/api/v1/departures/{station_id}` | Kernendpunkt des Walking Skeleton; begrenzter Fahrplan-Adapter |
 
 ### Interne beziehungsweise geschützte Endpunkte
 
@@ -541,9 +654,10 @@ Daher wird im MVP keine GPS-Prüfung durchgeführt. Stattdessen:
 ```json
 {
   "networkId": "example-network",
+  "category": "elevator_out_of_order",
+  "stationId": "example-station",
   "mode": "s_bahn",
   "lineId": "s2",
-  "stopId": "example-stop",
   "direction": "outbound",
   "observedAt": "2026-09-17T12:34:00Z",
   "note": "Sachliche optionale Ergänzung"
@@ -678,141 +792,170 @@ Markierungen sind kein Beweis. Ein einzelner Upvote macht eine Meldung nicht wah
 
 ## 17. Umsetzung in Sprints
 
-### Sprint 0 – Entscheidungen und Begrenzung
+Die Reihenfolge ist absichtlich nicht „erst alle Container, dann sehen wir weiter“. Jeder Schritt muss ein eigenes Ergebnis liefern.
 
-**Ziel:** Ein umsetzbarer, prüfbarer Projektumfang steht fest.
+### Sprint 0 – Entscheidungen an einem Abend
 
-Aufgaben:
-
-- Zielstadt und Verkehrsnetz auswählen
-- fachliche Definition einer Meldung festlegen
-- Zugarten für den Start festlegen; Bus und Straßenbahn bleiben außerhalb des Scopes
-- Datenquelle und Lizenz auswählen
-- exakte MVP-Abnahmekriterien bestätigen
-- Stackentscheidung dokumentieren
-- Datenschutz- und Bedrohungsmodell als Arbeitsdokument beginnen
-- externe Fahrplan-API nur aufnehmen, wenn sie für den Projektnutzen erforderlich ist
-
-**Ergebnis:** Architekturentscheidung, Datenquellenentscheidung und MVP-Scope.
-
-### Sprint 1 – Repository und lokale Infrastruktur
-
-**Ziel:** Ein reproduzierbarer, noch kleiner Entwicklungsstack läuft.
+**Ziel:** Der Umfang ist klein genug, um ihn wirklich zu bauen.
 
 Aufgaben:
 
-- Projektstruktur anlegen
-- Python-Umgebung und Formatierung einrichten
-- FastAPI-Anwendung mit `/api/v1/health` erstellen
-- PostgreSQL per Compose starten
-- Migrationen mit leerem und bestehendem Schema prüfen
-- Caddy zunächst optional für den lokalen Stack konfigurieren
-- Umgebungsvariablen dokumentieren
-- CI für Formatierung, Lint und Unit-Tests einrichten
+- MVP-Kategorien festlegen: Aufzug defekt, überfüllt, Störung
+- `ticket_inspection` ausdrücklich aus dem MVP ausschließen
+- Zugumfang bestätigen: U-Bahn, S-Bahn, Regionalverkehr, optional Fernverkehr
+- Zielstadt vom Testnetz Münster unterscheiden
+- Rollen klären: Entwicklung, Datenquellen, Moderation, Betrieb
+- Frontend-Stack nach vorhandenem Können auswählen
+- GitHub-Issues für offene Entscheidungen, Quellen und Risiken anlegen
+- Definition of Done und Zeitbudget festhalten
 
-**Ergebnis:** Ein neuer Entwickler kann die API und Datenbank lokal starten und einen grünen Health-Test ausführen.
+**Ergebnis:** Ein einseitiger MVP-Entscheid, der von allen Beteiligten bestätigt ist.
 
-### Sprint 2 – Verkehrsnetzdaten
+### Sprint 1 – Daten-Spike
 
-**Ziel:** Die Anwendung kennt ein kontrolliertes Netz.
-
-Aufgaben:
-
-- Importformat festlegen
-- Netze, Linien, Haltestellen und Richtungen modellieren
-- Importvalidierung schreiben
-- Datensatzversion speichern
-- ungültige Referenzen melden
-- Quelle und Lizenz dokumentieren
-- öffentliche Endpunkte für Netz und Linien bauen
-
-**Ergebnis:** Das Frontend kann valide Auswahlwerte laden; freie Fantasielinien werden abgelehnt.
-
-### Sprint 3 – Meldungen und Ablauf
-
-**Ziel:** Der Kernnutzen funktioniert ohne externe Live-Fahrplandaten.
+**Ziel:** Vor Infrastruktur ist bekannt, ob brauchbare Daten existieren.
 
 Aufgaben:
 
-- `reports`-Tabelle und Migration
-- Eingabe- und Zeitvalidierung
-- Statusmaschine
-- `POST /reports`
-- `GET /reports`
-- serverseitige Ablaufberechnung
-- Ablaufjob im Worker
-- zusätzliche Ablaufprüfung beim Lesen
-- Duplikaterkennung als vorsichtige Heuristik
+- kleine Testskripte gegen echte Stationen in Münster schreiben
+- `db.transport.rest` prüfen
+- DB Timetables API prüfen
+- DELFI/GTFS für statische Netz- und Fahrplandaten prüfen
+- Vollständigkeit, Aktualität, Antwortzeit und Fehlerfälle vergleichen
+- Rate-Limits und Nutzungsbedingungen beobachten
+- Lizenz, Attribution und Weiterverwendung dokumentieren
+- mindestens eine Station ohne, mit leerer und mit fehlerhafter Antwort testen
+- Datenquelle für Walking Skeleton und Datenquelle für statische Netzdaten getrennt bewerten
 
-**Ergebnis:** Eine Meldung kann erstellt, angezeigt, zeitlich eingeordnet und automatisch ausgeblendet werden.
+**Ergebnis:** Ein kurzer Datenbericht mit Messwerten, Beispielantworten, Lizenznotizen und einer begründeten Quellenauswahl.
 
-### Sprint 4 – Frontend
+Münster ist dabei ein Testnetz für den Spike. Daraus folgt noch nicht, dass Münster die spätere Startstadt wird.
 
-**Ziel:** Der Kernablauf funktioniert mobil.
+### Sprint 2 – Walking Skeleton
 
-Aufgaben:
-
-- Liste aktueller Meldungen
-- Karte mit Netzdaten und Meldungsmarkern
-- Meldeformular mit kontrollierten Auswahlfeldern
-- Filter
-- Alter und Ablauf verständlich anzeigen
-- Lade-, Offline- und Fehlerzustände
-- Tastaturbedienung und Screenreader-Beschriftungen
-- keine Browser-Geolocation im MVP
-
-**Ergebnis:** Der komplette Nutzerablauf kann im Browser durchgespielt werden.
-
-### Sprint 5 – Moderation und Missbrauchsschutz
-
-**Ziel:** Der Dienst bleibt bei falschen oder problematischen Beiträgen handhabbar.
+**Ziel:** Nach wenigen Tagen existiert ein vorzeigbares, kleines Produkt.
 
 Aufgaben:
 
-- Flag-Endpunkt
-- Markierungskategorien
+- FastAPI-Dienst starten
+- `/api/v1/health` und `/api/v1/departures/{station_id}` implementieren
+- erlaubte Stations-IDs validieren
+- Upstream-Timeout und verständliche Fehlerantworten einbauen
+- minimales Frontend mit Stationsauswahl und Abfahrtsliste erstellen
+- Docker Compose nur mit den notwendigen Komponenten aufsetzen
+- Caddy optional als einfacher Reverse-Proxy für die Demo nutzen
+- zunächst ohne Redis, PostgreSQL und Kartenintegration arbeiten
+- einfache Logs ohne vollständige Nutzereingaben schreiben
+
+**Ergebnis:** Eine Station kann ausgewählt werden und aktuelle Abfahrten werden angezeigt. Dieses Ergebnis ist bereits demonstrierbar, auch wenn die spätere Meldeplattform nicht umgesetzt werden sollte.
+
+### Sprint 3 – Caching und Lastnachweis
+
+**Ziel:** Die externe Datenquelle wird nicht durch parallele Anfragen belastet.
+
+Aufgaben:
+
+- Redis hinzufügen
+- Cache-Schlüssel aus Quelle, Netz, Station, Produkten und Zeitfenster bilden
+- frische Cache-Treffer sofort ausliefern
+- Request-Coalescing mit kurzem, token-basiertem Lock implementieren
+- adaptive TTL für nahe und spätere Abfahrten messen
+- Stale-While-Revalidate nur einsetzen, wenn veraltete Daten fachlich vertretbar sind
+- Upstream-Timeout, Lock-Ablauf und Redis-Ausfall testen
+- Locust-Lasttest mit 100 parallelen Nutzer:innen durchführen
+
+**Abnahmekriterium:** Bei 100 parallelen Anfragen auf denselben Cache-Miss entsteht höchstens ein Upstream-Request. Dieses Ergebnis wird im Testbericht mit Metriken belegt.
+
+### Sprint 4 – Harmlose stationsbezogene Meldungen
+
+**Ziel:** Die erste Schreibfunktion ist nützlich, datensparsam und unkritisch.
+
+MVP-Kategorien:
+
+- `elevator_out_of_order`
+- `crowded`
+- `disruption`
+
+Aufgaben:
+
+- Station aus dem aktuellen Stations- oder Abfahrtskontext vorauswählen
+- Kategorie per Tipp auswählen lassen
+- optional Linie, Zugart, Richtung und kurze Ergänzung erfassen
+- Meldungen stationsbezogen mit Redis-TTL speichern
+- öffentliche Liste um Meldungsalter und Ablauf ergänzen
+- Karte erst nach der Liste und nur mit öffentlichen Stationskoordinaten hinzufügen
+- beim Stationsabruf höchstens einmal pro Sitzung fragen: „Noch aktuell? Ja / Nein“
+- Bestätigung ohne Punkte oder Geld speichern beziehungsweise aggregiert auswerten
+- Meldende über Annahme, Ablauf und Wirkung informieren
+- keine Kontrollkategorie in die Eingabemaske aufnehmen
+
+**Ergebnis:** Eine Station kann eine harmlose, automatisch ablaufende Meldung erhalten. Andere Nutzer:innen sehen sie, bestätigen sie einmalig und sehen ihren Aktualitätsstatus.
+
+### Sprint 5 – Spam-Schutz und Kaltstart
+
+**Ziel:** Die offene Schreibfunktion bleibt trotz fehlender Konten beherrschbar.
+
+Aufgaben:
+
+- Rate-Limits nach Endpunkt und kurzer technischer Quelle
+- zufälliges, undurchsichtiges Token prüfen; kein Geräte-Hash und keine Identität
+- Token nur für Missbrauchsschutz, nicht für Ranking oder Profile
+- kurze Lebensdauer, Rotation und Löschung dokumentieren
+- IPs in Reverse-Proxy- und API-Logs mit eigener kurzer Löschfrist behandeln
+- rechtlich prüfen, ob erforderliche Token-Speicherung unter § 25 Abs. 2 Nr. 2 TDDDG fallen kann
+- bei Bedarf Bestätigungen durch mehrere technisch verschiedene, kurzlebige Tokens testen
+- neue Meldungen beim Kaltstart sichtbar, aber als unbestätigt kennzeichnen
+- keine technisch nicht beweisbare „Unabhängigkeit“ als Fakt behaupten
+- Quarantäne für auffällige Serien
+
+**Ergebnis:** Ein Spam-Szenario wird begrenzt, ohne einen dauerhaften Trust-Score aufzubauen und ohne die erste Meldung unsichtbar zu machen.
+
+### Sprint 6 – PostgreSQL und dauerhafte Moderation, falls erforderlich
+
+**Ziel:** Erst jetzt wird aus dem TTL-Prototyp ein dauerhafter, betreibbarer Dienst.
+
+PostgreSQL wird nur aufgenommen, wenn mindestens einer dieser Gründe belegt ist:
+
+- Moderationsentscheidungen müssen über Redis-TTL hinaus nachvollziehbar bleiben.
+- Berichte und Datenqualität müssen ausgewertet werden.
+- mehrere Worker brauchen eine dauerhafte Quelle der Wahrheit.
+- Aufbewahrung, Löschung und Backup müssen über den Prototyp hinaus betrieben werden.
+
+Aufgaben:
+
+- Datenmodell und Migrationen
+- Statusmaschine für `received`, `published`, `expired`, `quarantined` und `removed`
 - Moderationswarteschlange
-- Quarantäne und Entfernen
-- Rate-Limits auf API-Ebene
-- Eingabe- und Antwortgrößen begrenzen
-- minimierte Logs
-- Testfälle für Spam und unberechtigte Moderationszugriffe
+- Lösch- und Aufbewahrungsjobs
+- Backup und Restore
+- Integrations- und End-to-End-Tests
 
-**Ergebnis:** Eine problematische Meldung kann gemeldet, geprüft und aus der öffentlichen Ansicht entfernt werden.
+### Sprint 7 – Kontrollkategorie als eigene Entscheidung
 
-### Sprint 6 – Externe Abfahrtsdaten, falls priorisiert
+**Ziel:** Nicht automatisch aus der Inspiration ein rechtlich und strategisch anderes Produkt machen.
 
-**Ziel:** Ein begrenzter, sauberer Read-Only-Adapter ist verfügbar.
+Aufgaben vor einer Implementierung von `ticket_inspection`:
 
-Aufgaben:
+- rechtliche Risiken und Verantwortlichkeiten prüfen
+- strategisches Ziel der Kategorie schriftlich entscheiden
+- Community- und Moderationsregeln erweitern
+- Missbrauchs- und Bedrohungsmodell aktualisieren
+- Ablaufzeit und Darstellung separat festlegen
+- prüfen, ob die Kategorie mit der gewählten Marke und Außenwirkung vereinbar ist
+- Entscheidung als eigenes Issue beziehungsweise ADR dokumentieren
 
-- Nutzungsbedingungen und Attribution prüfen
-- Adapter statt beliebigem Proxy implementieren
-- Timeout und Fehlerverhalten
-- Redis-Cache
-- Request-Coalescing
-- Stale-While-Revalidate, wenn fachlich sinnvoll
-- Metriken für Upstream und Cache
-- Tests mit Mock-Upstream und Fehlerfällen
+**Ergebnis:** Entweder bleibt die Kategorie außerhalb des Produkts oder sie wird bewusst als eigener, geprüfter Scope aufgenommen. Sie wird nicht nur als zusätzlicher Enum-Wert „nebenbei“ aktiviert.
 
-**Ergebnis:** Ein externer Ausfall führt nicht zu einem hängenden Backend und nicht zu einer Anfrageflut.
+### Sprint 8 – Betrieb und Abschluss
 
-### Sprint 7 – Betrieb und Abschluss
-
-**Ziel:** Der Projektstand ist reproduzierbar und vorzeigbar.
-
-Aufgaben:
-
-- Produktionsähnlicher Compose-Stack
 - HTTPS-Reverse-Proxy dokumentieren
-- Backup und Restore testen
-- Monitoring und Health Checks
-- Sicherheits- und Datenschutzdokumente gegen Code prüfen
-- Lasttest für Lesen und Meldungen
-- bekannte Grenzen und nicht getestete Punkte dokumentieren
-- Demoablauf und technische Präsentation vorbereiten
-
-**Ergebnis:** Der MVP kann nachvollziehbar installiert, getestet, betrieben und wiederhergestellt werden.
+- Monitoring für Upstream, Cache, Meldungen und Ablauf einrichten
+- Backup und Restore praktisch testen
+- Sicherheits- und Datenschutzdokumente gegen den Code prüfen
+- Barrierefreiheit und mobile Bedienung prüfen
+- Last- und Ausfalltests wiederholen
+- Pilotphase mit Feedbackmöglichkeit durchführen
+- weitere Zugnetze erst nach Datenqualitätsprüfung hinzufügen
 
 ---
 
@@ -842,10 +985,11 @@ Die Idee eignet sich als IHK-Abschlussprojekt, wenn die Aufgabe nicht als „ein
 1. native Apps,
 2. Telegram-Import,
 3. WebSockets,
-4. Trust-Score,
-5. Mehrstadtbetrieb,
-6. komplexe Nutzerkonten,
-7. räumliche PostGIS-Analysen, wenn Netzdaten-IDs ausreichen.
+4. Kontrollkategorie `ticket_inspection`,
+5. Trust-Score,
+6. Mehrstadtbetrieb,
+7. komplexe Nutzerkonten,
+8. räumliche PostGIS-Analysen, wenn Stations- und Netzdaten-IDs ausreichen.
 
 Ein kleiner, sauber geprüfter Scope ist besser als ein Microservice-System, das am Ende weder vollständig getestet noch sicher betrieben werden kann.
 
@@ -882,23 +1026,26 @@ Regeln:
 
 ### Fachlich
 
-- [ ] Eine Meldung kann ohne Geräte-GPS erstellt werden.
-- [ ] Linie, Ort und Richtung werden gegen Netzdaten geprüft.
+- [ ] Eine geprüfte Datenquelle liefert echte Stations- und Abfahrtsdaten.
+- [ ] Eine Station kann ausgewählt und in einer Minimaloberfläche angezeigt werden.
+- [ ] Eine harmlose Kategorie kann ohne Geräte-GPS erstellt werden.
+- [ ] Die Station ist vorausgewählt; Linie und Richtung sind optional und werden nur aus Netzdaten akzeptiert.
 - [ ] Beobachtungszeit und Eingangszeit bleiben getrennt.
-- [ ] Das Ablaufdatum wird serverseitig gesetzt.
+- [ ] Das Ablaufdatum wird serverseitig gesetzt und über Redis-TTL durchgesetzt.
 - [ ] Abgelaufene Meldungen verschwinden aus der aktuellen Ansicht.
-- [ ] Eine Meldung kann markiert und moderiert werden.
-- [ ] Liste und Karte zeigen dieselbe Datenbasis.
+- [ ] Ein Stationsabruf fragt höchstens einmal pro Sitzung nach einer Bestätigung.
+- [ ] Eine Meldung kann markiert und moderiert werden, sofern Moderation bereits dauerhaft gespeichert wird.
+- [ ] `ticket_inspection` ist im MVP nicht auswählbar.
 
 ### Technisch
 
 - [ ] API-Fehler haben stabile Fehlercodes.
-- [ ] Datenbankmigrationen funktionieren auf leerem Schema.
-- [ ] der Worker verarbeitet abgelaufene Meldungen idempotent.
-- [ ] Redis-Ausfall führt nicht zu Datenverlust bei Meldungen.
-- [ ] externe Upstream-Fehler haben Timeout und verständlichen Fallback.
+- [ ] Externe Upstream-Fehler haben Timeout und verständlichen Fallback.
+- [ ] Ein Locust-Test mit 100 parallelen Anfragen erzeugt bei einem Cache-Miss höchstens einen Upstream-Request.
+- [ ] Lock-Ablauf und Redis-Ausfall sind getestet.
 - [ ] Rate-Limits sind aktiv und automatisiert getestet.
 - [ ] kein öffentlicher Endpunkt gibt interne oder private Felder aus.
+- [ ] Falls PostgreSQL eingeführt wird: Migrationen, Löschfristen, Backup und Restore sind getestet.
 
 ### Betrieb
 
@@ -939,30 +1086,33 @@ Regeln:
 
 Der technische MVP ist erst fertig, wenn:
 
-1. die Anwendung lokal reproduzierbar startet,
-2. ein versioniertes Verkehrsnetz importiert ist,
-3. eine Meldung serverseitig validiert und gespeichert wird,
-4. die Meldung in Liste und Karte erscheint,
-5. Alter und Ablauf korrekt dargestellt werden,
+1. eine geprüfte Datenquelle echte Stationen und Abfahrten liefert,
+2. die Anwendung lokal reproduzierbar startet,
+3. eine Station ausgewählt und angezeigt werden kann,
+4. eine harmlose Meldung serverseitig validiert und mit TTL gespeichert wird,
+5. Station, Kategorie, Alter und Ablauf korrekt dargestellt werden,
 6. abgelaufene Meldungen nicht mehr öffentlich erscheinen,
-7. Markieren und Moderieren funktioniert,
+7. die Bestätigung „Noch aktuell?“ höchstens einmal pro Sitzung erfolgt,
 8. Rate-Limits und Eingabegrenzen aktiv sind,
-9. Tests den vollständigen Kernablauf abdecken,
-10. externe Fehler kontrolliert behandelt werden,
-11. Backup und Restore nach Anleitung funktionieren,
+9. der Cache- und Upstream-Fehlerfall getestet ist,
+10. Tests den vollständigen Kernablauf abdecken,
+11. `ticket_inspection` nicht Teil des MVP ist,
 12. Datenschutz- und Sicherheitsdokumentation zum tatsächlichen Code passt,
 13. bekannte Nichtziele und Restrisiken in der README stehen.
+
+Wenn PostgreSQL für Moderation oder Auswertung in den MVP aufgenommen wird, kommen Migration, Backup, Restore und Löschprüfung als zusätzliche Abnahmekriterien hinzu.
 
 ---
 
 ## 23. Nächster konkreter Schritt
 
-Nicht mit WebSockets, PostGIS oder Geräte-Hashes beginnen.
+Nicht mit WebSockets, PostGIS, Geräte-Hashes oder Microservices beginnen.
 
-Der nächste Schritt ist ein kurzer **Sprint 0** mit drei Ergebnissen:
+Der nächste Schritt ist der **Daten-Spike**:
 
-1. Startstadt und Verkehrsnetz festlegen.
-2. Entscheiden, ob externe Abfahrtsdaten für den MVP wirklich benötigt werden.
-3. Eine verbindliche Entscheidung für den MVP-Scope und den Startstack dokumentieren.
+1. eine kleine Stationsliste für Münster festlegen,
+2. `db.transport.rest`, DB Timetables API und DELFI/GTFS mit Testskripten vergleichen,
+3. Vollständigkeit, Aktualität, Latenz, Fehlerfälle und Lizenzen dokumentieren,
+4. eine Datenquelle für das Walking Skeleton auswählen.
 
-Erst danach lohnt sich das Anlegen von Docker-Compose, FastAPI und Datenbankmigrationen.
+Erst danach wird FastAPI mit `/api/v1/departures/{station_id}` und einem minimalen Frontend aufgebaut. Redis kommt erst für den Cache- und Lastnachweis hinzu; PostgreSQL und die Kontrollkategorie bleiben spätere Entscheidungen.
