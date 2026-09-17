@@ -43,9 +43,9 @@ Die Anwendung ist keine offizielle Auskunft eines Verkehrsunternehmens. Sie erse
 
 ### Verbindlicher Geltungsbereich: nur Züge
 
-Pendler-Radar umfasst ausschließlich den **Schienenverkehr mit Zügen**. Je nach Startnetz können S-Bahn, Regionalbahn, Regional-Express und – nach ausdrücklicher Entscheidung – Fernverkehr enthalten sein.
+Pendler-Radar umfasst ausschließlich den **Schienenverkehr mit Zügen**. Dazu gehören U-Bahn, S-Bahn, Regionalbahn und Regional-Express. Fernverkehr kann nach ausdrücklicher Entscheidung für das Startnetz ebenfalls enthalten sein.
 
-Busse, Straßenbahnen und U-Bahnen sind nicht Teil des MVP. Sie werden nicht in die erste Netzkonfiguration, die Fahrplandatenquelle oder die fachlichen Zugarten aufgenommen. Eine spätere Erweiterung wäre eine neue Produktentscheidung.
+Busse und Straßenbahnen sind nicht Teil des MVP. Sie werden nicht in die erste Netzkonfiguration, die Fahrplandatenquelle oder die fachlichen Zugarten aufgenommen. Eine spätere Erweiterung wäre eine neue Produktentscheidung.
 
 ---
 
@@ -117,7 +117,7 @@ Busse, Straßenbahnen und U-Bahnen sind nicht Teil des MVP. Sie werden nicht in 
 Diese Fragen sind wichtiger als die Wahl zwischen Vue, React oder Svelte:
 
 1. **Welche Stadt startet?** Berlin, Dresden oder ein anderes Netz?
-2. **Welche Zugarten gehören zum Startumfang?** S-Bahn, Regionalbahn, Regional-Express und/oder Fernverkehr? Busse, Straßenbahnen und U-Bahnen gehören ausdrücklich nicht zum Umfang.
+2. **Welche Zugarten gehören zum Startumfang?** U-Bahn, S-Bahn, Regionalbahn, Regional-Express und/oder Fernverkehr? Busse und Straßenbahnen gehören ausdrücklich nicht zum Umfang.
 3. **Was genau ist eine Meldung?** Nur Fahrkartenkontrollen in Zügen oder auch Störungen, Ausfälle und Baustellen?
 4. **Wie lange gilt eine Meldung als aktuell?** Ein einheitlicher Wert oder abhängig von der Zugart?
 5. **Braucht das MVP externe Abfahrtsdaten überhaupt?** Für Meldungen können statische Netzdaten genügen.
@@ -686,7 +686,7 @@ Aufgaben:
 
 - Zielstadt und Verkehrsnetz auswählen
 - fachliche Definition einer Meldung festlegen
-- Zugarten für den Start festlegen; Bus, Straßenbahn und U-Bahn bleiben außerhalb des Scopes
+- Zugarten für den Start festlegen; Bus und Straßenbahn bleiben außerhalb des Scopes
 - Datenquelle und Lizenz auswählen
 - exakte MVP-Abnahmekriterien bestätigen
 - Stackentscheidung dokumentieren

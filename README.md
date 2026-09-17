@@ -84,11 +84,12 @@ Der Dienst soll nicht mehr Daten sammeln als für diesen Ablauf erforderlich sin
 
 Pendler-Radar konzentriert sich ausschließlich auf den **Schienenverkehr mit Zügen**. Je nach gewähltem Verkehrsnetz können dazu gehören:
 
+- U-Bahn,
 - S-Bahn,
 - Regionalbahn und Regional-Express,
 - Fernverkehr, sofern er für das Startnetz ausdrücklich freigegeben wird.
 
-Nicht Bestandteil des Projekts sind Busse, Straßenbahnen und U-Bahnen. Sie werden weder als eigene Zugart modelliert noch in die erste Netz- oder Fahrplandatenquelle aufgenommen. Eine spätere Erweiterung wäre eine neue Produktentscheidung und kein stillschweigender Teil des MVP.
+Nicht Bestandteil des Projekts sind Busse und Straßenbahnen. Sie werden weder als eigene Zugart modelliert noch in die erste Netz- oder Fahrplandatenquelle aufgenommen. Eine spätere Erweiterung wäre eine neue Produktentscheidung und kein stillschweigender Teil des MVP.
 
 ---
 
@@ -288,7 +289,7 @@ Linien innerhalb eines Netzes.
 - `id`
 - `network_id`
 - `code`, zum Beispiel `S2` oder `RE1`
-- `mode`, zum Beispiel `s_bahn`, `regional` oder `long_distance`
+- `mode`, zum Beispiel `u_bahn`, `s_bahn`, `regional` oder `long_distance`
 - `name`
 - `active`
 
