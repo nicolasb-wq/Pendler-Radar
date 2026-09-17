@@ -42,6 +42,7 @@ Pendler-Radar ist von [FreiFahren](https://freifahren.org/) aus Berlin inspirier
 | --- | --- |
 | Projektbeschreibung | dokumentiert |
 | Anforderungen und Grenzen | erster Entwurf |
+| Umsetzungsplan | überarbeitet, siehe [`docs/UMSETZUNGSPLAN.md`](docs/UMSETZUNGSPLAN.md) |
 | Web-App | noch nicht begonnen |
 | API | noch nicht begonnen |
 | Datenbank | noch nicht begonnen |
@@ -693,7 +694,7 @@ tests/
 README.md
 ```
 
-Im aktuellen Repository existiert davon noch nichts außer dieser README.
+Die Zielstruktur ist noch nicht angelegt. Aktuell vorhanden sind diese README und der [überarbeitete Umsetzungsplan](docs/UMSETZUNGSPLAN.md).
 
 ---
 
@@ -993,3 +994,4 @@ Pendler-Radar übernimmt weder Code noch Marke oder Inhalte von FreiFahren. Die 
 ## Lizenz
 
 Die Lizenz wird vor Beginn der ersten technischen Umsetzung festgelegt. Bis dahin ist dieses Repository eine Projektskizze und keine veröffentlichte Software.
+Projektskizze und keine veröffentlichte Software.
