@@ -1,8 +1,8 @@
 # Pendler-Radar
 
-Eine selbst betreibbare Web-App für gemeinschaftliche Echtzeit-Hinweise im öffentlichen Nahverkehr.
+Eine selbst betreibbare Web-App für gemeinschaftliche Echtzeit-Hinweise im Schienenverkehr.
 
-Pendler-Radar ist von [FreiFahren](https://freifahren.org/) aus Berlin inspiriert: Fahrgäste können Beobachtungen zu Fahrkartenkontrollen melden und aktuelle Meldungen anderer Fahrgäste sehen. Die Anwendung soll schnell, mobil, transparent und datensparsam sein – ohne Personen zu identifizieren und ohne ein Bewegungsprofil ihrer Nutzer:innen aufzubauen.
+Pendler-Radar ist von [FreiFahren](https://freifahren.org/) aus Berlin inspiriert: Fahrgäste können Beobachtungen zu Fahrkartenkontrollen in Zügen melden und aktuelle Meldungen anderer Fahrgäste sehen. Die Anwendung soll schnell, mobil, transparent und datensparsam sein – ohne Personen zu identifizieren und ohne ein Bewegungsprofil ihrer Nutzer:innen aufzubauen.
 
 > **Konzeptphase:** Dieses Repository enthält aktuell die Projektdokumentation. Es gibt noch keine ausführbare Anwendung, keine API, keine Datenbank und keine produktive Instanz. Die technischen Entscheidungen und Beispiele in dieser README beschreiben das Zielbild und sind an den Stellen als Vorschlag gekennzeichnet.
 >
@@ -60,7 +60,7 @@ Diese README beschreibt also kein bereits fertiges Produkt. Sie ist gleichzeitig
 
 ## Was entstehen soll
 
-Pendler-Radar soll eine fokussierte Community-Plattform für aktuelle Beobachtungen im ÖPNV werden:
+Pendler-Radar soll eine fokussierte Community-Plattform für aktuelle Beobachtungen im Schienenverkehr werden:
 
 1. Eine Person sieht eine Kontrolle oder eine andere relevante Beobachtung.
 2. Sie meldet diese mit Linie, Ort, Richtung und Beobachtungszeit.
@@ -74,11 +74,21 @@ Der Dienst soll nicht mehr Daten sammeln als für diesen Ablauf erforderlich sin
 ### Grundsätze
 
 - **Aktuell statt archiviert:** Eine alte Meldung darf nicht wie eine aktuelle Warnung aussehen.
-- **ÖPNV-orientiert statt GPS-orientiert:** Linien, Haltestellen und Streckenabschnitte sind die primären Orte.
+- **Schienenverkehr-orientiert statt GPS-orientiert:** Zuglinien, Bahnhöfe und Streckenabschnitte sind die primären Orte.
 - **Sachlich statt personenbezogen:** Beobachtungen ja, Identifizierung und Belästigung nein.
 - **Datensparsam statt profilbildend:** Keine unnötigen Konten, Bewegungsverläufe oder dauerhaften Identifikatoren.
 - **Selbst betreibbar statt undurchsichtig:** Installation, Datenflüsse, Löschung und Backups sollen dokumentiert sein.
 - **Ehrlich statt überversprechend:** Nicht implementierte oder ungeprüfte Eigenschaften werden nicht als fertig dargestellt.
+
+### Verbindlicher Geltungsbereich: nur Züge
+
+Pendler-Radar konzentriert sich ausschließlich auf den **Schienenverkehr mit Zügen**. Je nach gewähltem Verkehrsnetz können dazu gehören:
+
+- S-Bahn,
+- Regionalbahn und Regional-Express,
+- Fernverkehr, sofern er für das Startnetz ausdrücklich freigegeben wird.
+
+Nicht Bestandteil des Projekts sind Busse, Straßenbahnen und U-Bahnen. Sie werden weder als eigene Zugart modelliert noch in die erste Netz- oder Fahrplandatenquelle aufgenommen. Eine spätere Erweiterung wäre eine neue Produktentscheidung und kein stillschweigender Teil des MVP.
 
 ---
 
@@ -103,7 +113,7 @@ Der MVP soll:
 
 Pendler-Radar ist ausdrücklich nicht:
 
-- ein Ersatz für ein gültiges ÖPNV-Ticket,
+- ein Ersatz für ein gültiges Ticket im Schienenverkehr,
 - eine offizielle Anwendung eines Verkehrsunternehmens,
 - eine amtliche oder garantierte Echtzeitquelle,
 - ein Personenverzeichnis für Kontrolleur:innen,
@@ -123,7 +133,7 @@ Pendler-Radar ist ausdrücklich nicht:
 - die Anwendung direkt auf dem Smartphone öffnen
 - aktuelle Meldungen als chronologische Liste sehen
 - aktuelle Meldungen auf einer Karte sehen
-- nach Stadt, Verkehrsnetz, Verkehrsmittel, Linie und Zeitraum filtern
+- nach Stadt, Verkehrsnetz, Zugart, Linie und Zeitraum filtern
 - die Entfernung zur Aktualität einer Meldung erkennen, zum Beispiel „vor 8 Minuten“
 - eine Meldung mit wenigen Pflichtangaben erstellen
 - einen Ort aus dem Verkehrsnetz auswählen statt beliebige private Ortsdaten einzugeben
@@ -172,7 +182,7 @@ Pendler-Radar ist ausdrücklich nicht:
 Die meldende Person wählt mindestens:
 
 - Stadt oder Verkehrsnetz,
-- Verkehrsmittel,
+- Zugart, zum Beispiel S-Bahn, Regionalbahn oder Fernverkehr,
 - Linie,
 - Haltestelle oder Streckenabschnitt,
 - Fahrtrichtung,
@@ -277,8 +287,8 @@ Linien innerhalb eines Netzes.
 
 - `id`
 - `network_id`
-- `code`, zum Beispiel `U2` oder `M10`
-- `mode`, zum Beispiel `subway`, `tram`, `bus` oder `rail`
+- `code`, zum Beispiel `S2` oder `RE1`
+- `mode`, zum Beispiel `s_bahn`, `regional` oder `long_distance`
 - `name`
 - `active`
 
@@ -360,7 +370,7 @@ Die Startseite soll ohne Konto verständlich sein und direkt die aktuelle Ansich
 - Alter der Daten
 - Liste aktueller Meldungen
 - Kartenansicht als Ergänzung, nicht als einzige Informationsquelle
-- Filter nach Linie, Verkehrsmittel, Richtung und Zeitraum
+- Filter nach Zugart, Linie, Richtung und Zeitraum
 - deutlicher Hinweis, dass Meldungen unbestätigte Community-Beobachtungen sind
 - gut erreichbarer Button zum Erstellen einer Meldung
 
@@ -368,7 +378,7 @@ Die Startseite soll ohne Konto verständlich sein und direkt die aktuelle Ansich
 
 Das Formular soll eine Meldung in wenigen Schritten ermöglichen, aber nicht auf Kosten der Datenqualität:
 
-1. Verkehrsmittel auswählen
+1. Zugart auswählen
 2. Linie auswählen
 3. Haltestelle oder Abschnitt auswählen
 4. Richtung auswählen
@@ -576,7 +586,7 @@ Das ist eine technische Empfehlung, keine Behauptung über bereits vorhandenen C
 
 Berlin darf nicht als Sonderfall in der Fachlogik auftauchen. Stadtbezogene Informationen gehören in versionierte Netzdaten:
 
-- Linien und Verkehrsmittel
+- Zuglinien und Zugarten
 - Haltestellen und Abschnitte
 - Richtungen
 - Zeitzone
@@ -610,10 +620,10 @@ Vorgesehene Struktur, noch nicht implementiert:
 ```json
 {
   "networkId": "berlin",
-  "mode": "subway",
-  "lineId": "u2",
+  "mode": "s_bahn",
+  "lineId": "s2",
   "stopId": "alexanderplatz",
-  "direction": "pankow",
+  "direction": "bernau",
   "observedAt": "2026-09-17T12:34:00Z",
   "note": "Sachliche optionale Ergänzung"
 }
@@ -627,10 +637,10 @@ Die API darf niemals blind Felder aus diesem JSON übernehmen. Sie löst IDs geg
 {
   "id": "rpt_7f3b1e...",
   "networkId": "berlin",
-  "mode": "subway",
-  "line": "U2",
+  "mode": "s_bahn",
+  "line": "S2",
   "stop": "Alexanderplatz",
-  "direction": "Pankow",
+  "direction": "Bernau",
   "observedAt": "2026-09-17T12:34:00Z",
   "createdAt": "2026-09-17T12:35:12Z",
   "expiresAt": "2026-09-17T14:04:00Z",
@@ -903,7 +913,7 @@ Der MVP gilt erst dann als vorzeigbar, wenn alle folgenden Punkte erfüllt sind:
 - [ ] mobile Liste und Karte
 - [ ] Meldeformular mit kontrollierten Linien und Haltestellen
 - [ ] sichtbares Alter jeder Meldung
-- [ ] Filter für Netz, Verkehrsmittel, Linie, Richtung und Zeitraum
+- [ ] Filter für Netz, Zugart, Linie, Richtung und Zeitraum
 - [ ] Markieren-, Quarantäne- und Moderationsablauf
 - [ ] Rate-Limits und Missbrauchsschutz
 - [ ] erste selbst betriebene Testinstanz

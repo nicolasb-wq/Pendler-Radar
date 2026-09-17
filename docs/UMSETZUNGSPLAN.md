@@ -22,7 +22,7 @@ Die wichtigste Änderung gegenüber der Rohfassung lautet:
 
 ## 1. Ziel des Projekts
 
-Pendler-Radar soll aktuelle, gemeinschaftlich gemeldete Hinweise im öffentlichen Nahverkehr anzeigen. Im ersten Anwendungsfall geht es um Beobachtungen zu Fahrkartenkontrollen:
+Pendler-Radar soll aktuelle, gemeinschaftlich gemeldete Hinweise im Schienenverkehr anzeigen. Im ersten Anwendungsfall geht es um Beobachtungen zu Fahrkartenkontrollen:
 
 1. Eine Person wählt Verkehrsnetz, Linie, Ort, Richtung und Beobachtungszeit.
 2. Die Anwendung prüft die Eingabe und begrenzt Missbrauch.
@@ -34,12 +34,18 @@ Die Anwendung ist keine offizielle Auskunft eines Verkehrsunternehmens. Sie erse
 
 ### Produktprinzipien
 
-- **ÖPNV-Orte statt Nutzer-GPS:** Eine Meldung bezieht sich auf eine Haltestelle oder einen Streckenabschnitt aus den Netzdaten.
+- **Orte im Schienennetz statt Nutzer-GPS:** Eine Meldung bezieht sich auf einen Bahnhof, einen Haltepunkt oder einen Streckenabschnitt aus den Netzdaten.
 - **Zeitlich begrenzte Information:** Eine alte Meldung darf nicht wie eine aktuelle Warnung wirken.
 - **Datensparsamkeit:** Keine dauerhaften Geräteprofile und keine unnötigen Standortdaten.
 - **Sachlichkeit:** Keine Namen, Fotos, Audioaufnahmen oder Identifizierung von Personen.
 - **Offene Unsicherheit:** Eine Community-Meldung ist keine amtliche Bestätigung.
 - **Nachvollziehbarkeit:** Datenflüsse, Aufbewahrung und Betriebsgrenzen werden dokumentiert.
+
+### Verbindlicher Geltungsbereich: nur Züge
+
+Pendler-Radar umfasst ausschließlich den **Schienenverkehr mit Zügen**. Je nach Startnetz können S-Bahn, Regionalbahn, Regional-Express und – nach ausdrücklicher Entscheidung – Fernverkehr enthalten sein.
+
+Busse, Straßenbahnen und U-Bahnen sind nicht Teil des MVP. Sie werden nicht in die erste Netzkonfiguration, die Fahrplandatenquelle oder die fachlichen Zugarten aufgenommen. Eine spätere Erweiterung wäre eine neue Produktentscheidung.
 
 ---
 
@@ -50,7 +56,7 @@ Die Anwendung ist keine offizielle Auskunft eines Verkehrsunternehmens. Sie erse
 | Mehrere Microservices von Beginn an | Modularer Monolith plus separater Worker | Weniger Betriebsaufwand, einfachere Tests und für den MVP ausreichend |
 | Caddy als DDoS- und Rate-Limit-Schutz | Caddy als TLS-Reverse-Proxy; Rate-Limits in API/Redis oder vorgeschaltetem Edge-Dienst | Ein Reverse-Proxy allein ist kein DDoS-Schutz. Caddys Rate-Limit-Funktionen sind nicht ohne Weiteres Bestandteil des Kernprodukts. |
 | Exakte GPS-Position clientseitig prüfen | Keine Nutzer-GPS-Position im MVP | GPS ist für eine Meldung über Linie, Haltestelle und Richtung nicht erforderlich, ungenau und datenschutzrechtlich sensibel. |
-| 100-Meter-Geohash speichern | Netzdaten-Referenz speichern: `network_id`, `line_id`, `stop_id` oder `segment_id` | Ein Geohash ist trotz Vergröberung eine Ortsangabe und löst das Grundproblem nicht. Der ÖPNV-Ort ist präziser für die Fachlogik und datensparsamer. |
+| 100-Meter-Geohash speichern | Netzdaten-Referenz speichern: `network_id`, `line_id`, `stop_id` oder `segment_id` | Ein Geohash ist trotz Vergröberung eine Ortsangabe und löst das Grundproblem nicht. Der Ort im Schienennetz ist präziser für die Fachlogik und datensparsamer. |
 | Kryptografischer Geräte-Hash als Authentifizierung | Kein Geräte-Hash als Identität; kurzlebige Anti-Missbrauch-Mechanismen | Ein Hash beweist keine Identität, kann kopiert werden und wirkt wie Fingerprinting. Er ist kein Authentifizierungsverfahren. |
 | Trust-Score pro Gerät | Kein Nutzer-Trust-Score im MVP | Scores sind leicht manipulierbar, benachteiligen neue Nutzer:innen und speichern ein dauerhaftes Verhaltenssignal. |
 | Neue Meldung erst nach Bestätigung durch „vertrauenswürdige“ Person | Neue Meldung sofort mit sichtbarer Unsicherheit oder bei Auffälligkeit in Quarantäne | Sonst entsteht ein Kaltstartproblem und die Anwendung macht neue, möglicherweise wichtige Meldungen unsichtbar. |
@@ -111,9 +117,9 @@ Die Anwendung ist keine offizielle Auskunft eines Verkehrsunternehmens. Sie erse
 Diese Fragen sind wichtiger als die Wahl zwischen Vue, React oder Svelte:
 
 1. **Welche Stadt startet?** Berlin, Dresden oder ein anderes Netz?
-2. **Welche Verkehrsmittel gehören zum Startumfang?** Nur Bahn und Tram oder auch Bus?
-3. **Was genau ist eine Meldung?** Nur Fahrkartenkontrollen oder auch Störungen, Ausfälle und Baustellen?
-4. **Wie lange gilt eine Meldung als aktuell?** Ein einheitlicher Wert oder abhängig vom Verkehrsmittel?
+2. **Welche Zugarten gehören zum Startumfang?** S-Bahn, Regionalbahn, Regional-Express und/oder Fernverkehr? Busse, Straßenbahnen und U-Bahnen gehören ausdrücklich nicht zum Umfang.
+3. **Was genau ist eine Meldung?** Nur Fahrkartenkontrollen in Zügen oder auch Störungen, Ausfälle und Baustellen?
+4. **Wie lange gilt eine Meldung als aktuell?** Ein einheitlicher Wert oder abhängig von der Zugart?
 5. **Braucht das MVP externe Abfahrtsdaten überhaupt?** Für Meldungen können statische Netzdaten genügen.
 6. **Wie werden neue Meldungen behandelt?** Sofort sichtbar, gedämpft dargestellt oder bei auffälliger Rate quarantänisiert?
 7. **Wie kann die Community moderieren, ohne Nutzerprofile aufzubauen?**
@@ -254,7 +260,7 @@ Eine räumliche Datenbank einzusetzen, nur um ein 100-Meter-Geohash aus einer Nu
 Die Meldefunktion braucht eine stabile Zuordnung von:
 
 - Verkehrsnetz,
-- Verkehrsmittel,
+- Zugart, zum Beispiel S-Bahn, Regionalbahn, Regional-Express oder Fernverkehr,
 - Linie,
 - Haltestelle,
 - Streckenabschnitt,
@@ -372,7 +378,7 @@ Ein Statuswechsel wird nur über eine Domänenfunktion durchgeführt. Controller
 Ein mögliches Duplikat wird anhand einer Kombination aus:
 
 - Netz,
-- Verkehrsmittel,
+- Zugart, zum Beispiel S-Bahn, Regionalbahn, Regional-Express oder Fernverkehr,
 - Linie,
 - Ort beziehungsweise Abschnitt,
 - Richtung,
@@ -496,7 +502,7 @@ Die Rohfassung möchte die GPS-Position nur im RAM prüfen und nicht speichern. 
 - Die Erfassung braucht eine Berechtigung und kann abgelehnt oder gefälscht werden.
 - Innenräume, Tunnel und Geräte liefern ungenaue Werte.
 - Die Prüfung kann legitime Meldungen blockieren, wenn das Gerät keinen Empfang hat.
-- Die Meldung selbst enthält bereits einen geeigneten ÖPNV-Ort.
+- Die Meldung selbst enthält bereits einen geeigneten Ort im Schienennetz.
 
 Daher wird im MVP keine GPS-Prüfung durchgeführt. Stattdessen:
 
@@ -535,10 +541,10 @@ Daher wird im MVP keine GPS-Prüfung durchgeführt. Stattdessen:
 ```json
 {
   "networkId": "example-network",
-  "mode": "tram",
-  "lineId": "10",
+  "mode": "s_bahn",
+  "lineId": "s2",
   "stopId": "example-stop",
-  "direction": "city-centre",
+  "direction": "outbound",
   "observedAt": "2026-09-17T12:34:00Z",
   "note": "Sachliche optionale Ergänzung"
 }
@@ -680,7 +686,7 @@ Aufgaben:
 
 - Zielstadt und Verkehrsnetz auswählen
 - fachliche Definition einer Meldung festlegen
-- Startverkehrsmittel festlegen
+- Zugarten für den Start festlegen; Bus, Straßenbahn und U-Bahn bleiben außerhalb des Scopes
 - Datenquelle und Lizenz auswählen
 - exakte MVP-Abnahmekriterien bestätigen
 - Stackentscheidung dokumentieren
@@ -816,7 +822,7 @@ Die Idee eignet sich als IHK-Abschlussprojekt, wenn die Aufgabe nicht als „ein
 
 ### Geeigneter Projektschwerpunkt
 
-> Konzeption und Umsetzung eines datensparsamen Meldesystems für aktuelle ÖPNV-Beobachtungen mit externer Fahrplanintegration, Cache-Strategie, automatischem Ablauf und Moderationsschnittstelle.
+> Konzeption und Umsetzung eines datensparsamen Meldesystems für aktuelle Beobachtungen im Schienenverkehr mit externer Fahrplanintegration, Cache-Strategie, automatischem Ablauf und Moderationsschnittstelle.
 
 ### Was daran prüfbar ist
 
